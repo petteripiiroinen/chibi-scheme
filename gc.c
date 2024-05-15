@@ -32,6 +32,10 @@ static sexp* stack_base;
 #define sexp_debug_printf(fmt, ...)
 #endif
 
+/* the test debugging part starts, not to be merged */
+#define SEXP_INIT_NUM_TYPES (SEXP_NUM_CORE_TYPES*2)
+/* the test debugging part ends,   not to be merged */
+
 static sexp_heap sexp_heap_last (sexp_heap h) {
   while (h->next) h = h->next;
   return h;
@@ -265,6 +269,16 @@ static void sexp_mark_one (sexp ctx, sexp* types, sexp x) {
     for (saves=sexp_context_saves(x); saves; saves=saves->next)
       if (saves->var) sexp_mark_one(ctx, types, *(saves->var));
   }
+  /* crash testing verifying the crash place. not to be merged */
+  if (sexp_pointer_tag(x) >= SEXP_INIT_NUM_TYPES) {
+    printf("** CRITICAL ERROR: attempting to mark a pointer ");
+    printf("with an incorrect tag = %x, pointer = %lx **\n",
+        sexp_pointer_tag(x),
+        (long)x - (long)ctx);
+    printf("length of 'types' array = %x\n", SEXP_INIT_NUM_TYPES);
+    exit(1);
+  }
+  /* crash testing verifying the crash place. not to be merged */
   t = types[sexp_pointer_tag(x)];
   len = sexp_type_num_slots_of_object(t, x) - 1;
   if (len >= 0) {
