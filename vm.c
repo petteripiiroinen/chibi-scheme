@@ -1591,6 +1591,14 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
   make_call:
     sexp_context_top(ctx) = top;
     if (sexp_opcodep(tmp1)) {
+      /* setting _ARG1 to SEXP_NULL prevents a segmentation fault caused
+       * by unintialised stack top after SEXP_OP_APPLY1. It also
+       * prevents the same crash for SEXP_OP_TAIL_CALL that satisfies i
+       * - j >= 5 + m, where m is the number of used stack slots in the
+       * current frame
+       */
+      _ARG1 = SEXP_NULL;
+
       /* compile non-inlined opcode applications on the fly */
       debug_show_message("** VM just before crash place **");
       tmp1 = make_opcode_procedure(ctx, tmp1, i, SEXP_PROC_NONE);
