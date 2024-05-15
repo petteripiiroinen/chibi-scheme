@@ -34,6 +34,86 @@ static sexp* stack_base;
 
 /* the test debugging part starts, not to be merged */
 #define SEXP_INIT_NUM_TYPES (SEXP_NUM_CORE_TYPES*2)
+#define KOHTA1              34000000
+#define LAUKAISU            3
+#define VARMISTAVIRITYS     5
+#define VARMISTAVIRITYS2    6
+
+extern long _oma_ctx;
+extern long _laskuri1;
+extern long _laskuri4;
+extern long oma_taulukko[10];
+void print_relp(char *str, void *x);
+int  _kerrat    = 0;
+long _laskuri20 = 0;
+
+void debug_show_gc(sexp ctx) {
+  if ((_kerrat < 10) & (_laskuri1 > KOHTA1)) {
+    _kerrat++;
+    if (_laskuri4 == VARMISTAVIRITYS ||
+        _laskuri4 == VARMISTAVIRITYS2 ||
+        _laskuri4 == LAUKAISU) {
+      printf("** GC %d: VM @ %ld, stack = %ld **\n",
+             _kerrat, _laskuri1, sexp_context_top(ctx));
+    }
+  }
+}
+void debug_show_allocation_success_failure(sexp res, size_t size) {
+ if (_laskuri4 == LAUKAISU ) {
+   _laskuri20++;
+   if ((size > 0x20) && res) {
+     printf("** 1st attempt to allocate size = %lx succeeded **\n", size);
+   } else if (! res) {
+     printf("** attempt to allocate size = %lx failed, succeeded %ld times before **\n", size, _laskuri20);
+   }
+ }
+}
+void debug_overwrite(sexp res, size_t size) {
+  long rel_res = (long)res - _oma_ctx;
+  if (_laskuri4 == VARMISTAVIRITYS || _laskuri4 == LAUKAISU ) {
+    int overwrote = 0;
+    for (int i = 0; i <= 6; i++) {
+      if (! overwrote && (rel_res == oma_taulukko[i])) {
+        overwrote = 1;
+      }
+    }
+    if ( overwrote ) {
+      print_relp("** TRIGGERING FAILED: overwriting the target = ", res);
+      printf(" **\n");
+    }
+  }
+}
+void debug_sweep(sexp p, sexp_free_list q, sexp ctx, int branch) {
+  long rel_p = (long)p - _oma_ctx;
+  if ( (_laskuri4 == VARMISTAVIRITYS || _laskuri4 == VARMISTAVIRITYS2)) {
+    int sweepingp = 0;
+    for (int i = 0; i <= 6; i++) {
+      if (! sweepingp && (rel_p == oma_taulukko[i])) {
+        sweepingp = 1;
+      }
+    }
+    if ( sweepingp ) {
+      print_relp("** sweep obj-p: ", p);
+      if (branch == 6) {
+        printf(" (live ) ");
+      } else if (branch == 3) {
+        printf(" (ffree) ");
+      } else if (branch == 1) {
+        printf(" (cfree) ");
+      } else {
+        printf(", branch: %d, ", branch);
+      }
+      print_relp("obj-q: ", q);
+      printf(", q-tag: %02x, p-tag: %02x **\n", sexp_pointer_tag((sexp)q),
+          sexp_pointer_tag(p));
+    }
+  }
+}
+void debug_show_allocation_success_2(size_t size) {
+  if (_laskuri4 == LAUKAISU) {
+    printf("** 2nd attempt to allocate size = %ld succeeded **\n", size);
+  }
+}
 /* the test debugging part ends,   not to be merged */
 
 static sexp_heap sexp_heap_last (sexp_heap h) {
@@ -520,8 +600,10 @@ sexp sexp_sweep (sexp ctx, size_t *sum_freed_ptr) {
             /* ... and with r */
             q->next = r->next;
             freed = q->size + size + r->size;
+            debug_sweep(p, q, ctx, 2);
             p = (sexp) (((char*)p) + size + r->size);
           } else {
+            debug_sweep(p, q, ctx, 1);
             freed = q->size + size;
             p = (sexp) (((char*)p)+size);
           }
@@ -540,11 +622,13 @@ sexp sexp_sweep (sexp ctx, size_t *sum_freed_ptr) {
             q->next = s;
             freed = size;
           }
+          debug_sweep(p, q, ctx, 3);
           p = (sexp) (((char*)p)+freed);
         }
         if (freed > max_freed)
           max_freed = freed;
       } else {
+        debug_sweep(p, q, ctx, 6);
         sexp_markedp(p) = 0;
         p = (sexp) (((char*)p)+size);
       }
@@ -565,6 +649,7 @@ void sexp_mark_global_symbols(sexp ctx) {
 #endif
 
 sexp sexp_gc (sexp ctx, size_t *sum_freed) {
+  debug_show_gc(ctx);
   sexp res, finalized SEXP_NO_WARN_UNUSED;
 #if SEXP_USE_TIME_GC
   sexp_uint_t gc_usecs;
@@ -729,6 +814,8 @@ void* sexp_alloc (sexp ctx, size_t size) {
   ++sexp_context_alloc_histogram(ctx)[size_bucket >= SEXP_ALLOC_HISTOGRAM_BUCKETS ? SEXP_ALLOC_HISTOGRAM_BUCKETS-1 : size_bucket];
 #endif
   res = sexp_try_alloc(ctx, size);
+  debug_overwrite(res, size);
+  debug_show_allocation_success_failure(res, size);
   if (! res) {
     max_freed = sexp_unbox_fixnum(sexp_gc(ctx, &sum_freed));
 #if SEXP_USE_FIXED_CHUNK_SIZE_HEAPS
@@ -742,6 +829,7 @@ void* sexp_alloc (sexp ctx, size_t size) {
         && ((!h->max_size) || (total_size < h->max_size)))
       sexp_grow_heap(ctx, size, 0);
     res = sexp_try_alloc(ctx, size);
+    debug_show_allocation_success_2(size);
     if (! res) {
       res = sexp_global(ctx, SEXP_G_OOM_ERROR);
       sexp_debug_printf("ran out of memory allocating %lu bytes => %p", size, res);

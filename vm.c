@@ -948,6 +948,242 @@ static sexp sexp_restore_stack (sexp ctx, sexp saved) {
       goto call_error_handler;}}                               \
     while (0)
 
+/* the test debugging part starts, not to be merged */
+extern long oma_taulukko[10];
+extern long _laskuri1;
+extern long _oma_ctx;
+extern long _laskuri4;
+long _laskuri1              = 0;
+long _oma_ctx               = 0;
+long _laskuri3              = -3;
+long _laskuri4              = 0;
+long _laskuri5              = 0;
+long _laskuri_dbg           = 0;
+long oma_taulukko[10]	    = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+long _laskuri_dbg_array[4]  = {0xc0de, 0xdeed, 0xabba, 0xc0de};
+#define KOHTA1              34000000
+#define TALLENNASEURATUT    1
+#define NAYTAASSEMBLY       2
+#define LAUKAISU            3
+#define ALOITALAUKAISU      4
+#define VARMISTAVIRITYS     5
+#define VARMISTAVIRITYS2    6
+#define KOHDEPINOSSA2       9
+#define KOHDEPINOSSA        10
+
+void print_relp_g(char *str, void *x, int transl) {
+  sexp y = (sexp)x;
+  long rel_ptr = (long)x - _oma_ctx;
+  printf("%s", str);
+  if (sexp_fixnump(y) && transl) {
+    if (sexp_unbox_fixnum(y) >= 0) {
+      printf(" %7lxF", sexp_unbox_fixnum(y));
+    } else {
+      printf("-%7lxF", (0 - sexp_unbox_fixnum(y)));
+    }
+  } else if (sexp_nullp(y) && transl) {
+      printf("     NULL");
+  } else {
+    if (rel_ptr >= 0) {
+      printf(" %08lx", rel_ptr);
+    } else {
+      printf("-%08lx", (0 - rel_ptr));
+    }
+  }
+}
+void print_relp(char *str, void *x) {
+  print_relp_g(str, x, 0);
+}
+void debug_setup_ctx(sexp ctx) {
+  if (_laskuri1 == KOHTA1) {
+    _oma_ctx = (long)ctx;
+    printf("** VM @ %ld, pointers relative to: %08lx **\n",
+        _laskuri1, _oma_ctx);
+  }
+}
+void debug_show_message(const char *msg) {
+  if (_laskuri4 == LAUKAISU) {
+    printf("%s\n", msg);
+  }
+}
+void debug_verify_triggering(long top, long fp, sexp tmp1, sexp *stack) {
+  if (_laskuri4 == LAUKAISU) {
+    printf("** SEXP_OP_APPLY1 top: %ld fp: %ld, ", top, fp);
+    print_relp("_ARG1: ", _ARG1);
+    printf(" **\n");
+    if (sexp_opcodep(tmp1)) {
+      printf("** this can trigger the bug **\n");
+    } else {
+      printf("** this cannot trigger the bug **\n");
+    }
+  }
+}
+void print_symbolic(unsigned char *ip) {
+  unsigned char *oma_ip = ip;
+  sexp val;
+  switch (*oma_ip++) {
+    case SEXP_OP_PUSH:
+      val = ((sexp*)oma_ip)[0];
+      if (sexp_fixnump(val)) {
+        printf("SEXP_OP_PUSHF %7lx", sexp_unbox_fixnum(val));
+      } else  if (sexp_pointerp(val)) {
+        print_relp("SEXP_OP_PUSH", val);
+      } else  if (sexp_nullp(val)) {
+        printf("SEXP_OP_PUSH     NULL");
+      } else {
+        printf("SEXP_OP_PUSH/%08lx", (long)val);
+      }
+      break;
+    case SEXP_OP_DROP:
+      printf("SEXP_OP_DROP         ");
+      break;
+    case SEXP_OP_CONS:
+      printf("SEXP_OP_CONS         ");
+      break;
+    case SEXP_OP_RET:
+      printf("SEXP_OP_RET          ");
+      break;
+    case SEXP_OP_NULLP:
+      printf("SEXP_OP_NULLP        ");
+      break;
+    case SEXP_OP_JUMP_UNLESS:
+      printf("SEXP_OP_JUMP_UNLESS  ");
+      break;
+    case SEXP_OP_APPLY1:
+      printf("SEXP_OP_APPLY1       ");
+      break;
+    case SEXP_OP_CDR:
+      printf("SEXP_OP_CDR          ");
+      break;
+    case SEXP_OP_TAIL_CALL:
+      printf("SEXP_OP_TCLL %08lx", (long)((sexp*)oma_ip)[0]);
+      break;
+    case SEXP_OP_CALL:
+      printf("SEXP_OP_CALL %08lx", (long)((sexp*)oma_ip)[0]);
+      break;
+    case SEXP_OP_GLOBAL_KNOWN_REF:
+      printf("SEXP_OP_GKRF %08lx", (long)((sexp*)oma_ip)[0]);
+      break;
+    case SEXP_OP_LOCAL_REF:
+      printf("SEXP_OP_LCRF %08lx", (long)((sexp*)oma_ip)[0]);
+      break;
+    default:
+      printf("<unparsed SEXP_OP_..>");
+  }
+}
+void debug_show_instruction_during_launch(long top, unsigned char *ip,
+                                                    long fp) {
+ if ((_laskuri4 == LAUKAISU) && (_laskuri5 > 0)) {
+   printf("** VM @ %ld: %02x ", _laskuri1, *ip);
+   print_relp("ip: ", ip);
+   printf(" ");
+   print_symbolic(ip);
+   printf(" top: %ld fp: %ld \n", top, fp);
+   _laskuri5--;
+ }
+}
+void debug_show_instruction(long top, unsigned char *ip, long fp) {
+  if (_laskuri4 == NAYTAASSEMBLY) {
+    printf("** VM @ %ld: %02x ", _laskuri1, *ip);
+    print_relp("ip: ", ip);
+    printf(" ");
+    print_symbolic(ip);
+    printf(" top: %ld fp: %ld \n", top, fp);
+  }
+}
+void debug_check_detonation(void) {
+  if (_laskuri4 == VARMISTAVIRITYS) {
+    sexp temppi1 = (sexp)(oma_taulukko[1] + _oma_ctx);
+    if (sexp_pointer_tag(temppi1) != 0xa0) {
+      printf("** VM @ %ld, pointer tag = %x, ",
+          _laskuri1, sexp_pointer_tag(temppi1));
+      print_relp("object = ", temppi1);
+      printf(" **\n");
+      _laskuri4 = VARMISTAVIRITYS2;
+    }
+  }
+}
+void debug_show_trigger(sexp *stack) {
+  if (_laskuri4 == KOHDEPINOSSA) {
+    printf("** VM @ %ld **\n", _laskuri1);
+    for (int i = 7044; i > 7038; i--) {
+      printf("** stack value %d ", i);
+      print_relp("is ", stack[i]);
+      printf(" **\n");
+    }
+    _laskuri4 = KOHDEPINOSSA2;
+  }
+}
+void debug_connection(unsigned char *ip) {
+  if (*ip == 0xf) {
+    ip++;
+    long val = (long)_WORD0;
+    if (sexp_fixnump(val)) {
+      long r_val = sexp_unbox_fixnum(val);
+      long s_val = _laskuri_dbg_array[_laskuri_dbg];
+      if ( _laskuri_dbg == 3 && r_val != s_val ) {
+        _laskuri_dbg = 0;
+        if (_laskuri4 && !r_val) {
+          _laskuri4 = r_val;
+          printf("** debug connection stopped **\n");
+        } else if (_laskuri4 && (r_val != _laskuri4)) {
+          _laskuri4 = r_val;
+          printf("** debug connection switched to state %ld **\n",
+              _laskuri4);
+        } else if (!_laskuri4 && r_val) {
+          _laskuri4 = r_val;
+          printf("** debug connection started in state %ld **\n",
+              _laskuri4);
+        }
+      } else if (r_val == s_val) {
+        _laskuri_dbg++;
+      } else if ( _laskuri_dbg ) {
+        _laskuri_dbg = 0;
+      }
+      if (_laskuri4 == ALOITALAUKAISU) {
+        _laskuri5 = 100;
+        _laskuri4 = LAUKAISU;
+      }
+    } else if ( _laskuri_dbg ) {
+      _laskuri_dbg = 0;
+    }
+  } else if (_laskuri_dbg) {
+     _laskuri_dbg = 0;
+  }
+}
+void debug_target_creation_1(long top, sexp *stack) {
+  if (_laskuri4 == TALLENNASEURATUT) {
+    if (_laskuri3 > 6) {
+      _laskuri3 = -100;
+    }
+    if (_laskuri3 >= 0) {
+      printf("** VM @ %ld CONSING ", _laskuri1);
+      printf("@ stack %ld ", top - 2);
+      print_relp_g("( ",  _ARG1, 1);
+      print_relp_g(" . ", _ARG2, 1);
+      printf(")");
+    }
+  }
+}
+void debug_target_creation_2(long top, sexp *stack) {
+  if (_laskuri4 == TALLENNASEURATUT) {
+    if (_laskuri3 >= 0) {
+      print_relp(" -> ", _ARG2);
+      printf(" **\n");
+      oma_taulukko[_laskuri3] = (long)_ARG2 - _oma_ctx;
+    }
+    if (_laskuri3 == 6) {
+      for (int i2 = 0; i2 <= _laskuri3; i2++) {
+        printf("** following pair = %d, ", i2);
+        print_relp("cons cell = ", (sexp)(oma_taulukko[i2] + _oma_ctx));
+        printf(" **\n");
+      }
+    }
+    _laskuri3++;
+  }
+}
+/* the test debugging part ends,  not to be merged */
+
 static int sexp_check_type(sexp ctx, sexp a, sexp b) {
   int d;
   sexp t, v;
@@ -1099,6 +1335,9 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
   goto make_call;
 
  loop:
+  _laskuri1++;
+  debug_setup_ctx(ctx);
+
 #if SEXP_USE_GREEN_THREADS
   if (--fuel <= 0) {
     if (sexp_context_interruptp(ctx)) {
@@ -1148,6 +1387,11 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
     }
   }
 #endif
+  debug_show_trigger(stack);
+  debug_check_detonation();
+  debug_show_instruction(top, ip, fp);
+  debug_show_instruction_during_launch(top, ip, fp);
+  debug_connection(ip);
 #if SEXP_USE_DEBUG_VM
   if (sexp_context_tracep(ctx)) {
     sexp_print_stack(ctx, stack, top, fp, SEXP_FALSE);
@@ -1267,6 +1511,24 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
       for (top=fp-j+i-1; sexp_pairp(tmp2); tmp2=sexp_cdr(tmp2), top--)
         stack[top] = sexp_car(tmp2);
       top = fp+i-j+1;
+      /* While copying the list to stack, the stack is populated upto
+       * top-2, which means that the stack top (_ARG1) is left
+       * uninitialised.
+       *
+       * If the tmp1 is a non-inlined opcode and compiling the bytecode
+       * procedure object triggers garbage collection, this
+       * unintialised slot is included into the marking phase and
+       * it might contain a dead reference to an object that was swept
+       * before and added to free list.
+       *
+       * Since the tag value is used for the free list length, an
+       * attempt to mark this object can, in certain cases, cause a
+       * segmentation fault.
+       *
+       * This can be fixed locally here, or only for the potential GC
+       * place. Since the same issue is present in SEXP_OP_TAIL_CALL,
+       * both are fixed at the same location
+       */
       fp = k;
       /* if final cdr of tmp2 isn't null, then args list was improper */
       if (! sexp_nullp(tmp2)) {
@@ -1274,6 +1536,7 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
         sexp_raise("apply: improper args list", sexp_list1(ctx, stack[prev_top-2]));
       }
     }
+    debug_verify_triggering(top, fp, tmp1, stack);
     goto make_call;
   case SEXP_OP_TAIL_CALL:
     _ALIGN_IP();
@@ -1290,6 +1553,35 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
     for (k=0; k<i; k++)
       stack[fp-j+k] = stack[top-1-i+k];
     top = fp+i-j+1;
+    /* While copying the arguments to stack, the stack is populated upto
+     * top-2, which means that the stack top (_ARG1) can be left
+     * uninitialised, if the there are too few arguments passed to the
+     * tailcall. More precisely, this can occur when
+     *
+     *      i - j >= 5 + m - 1
+     *
+     * where m = number of used stack slots during the tailcall.
+     * Normalising the case so that fp = 0. Then top = 4 + m before
+     * tailcall and the new top becomes
+     *
+     * top' = fp + i - j + 1
+     *      >= 0 + 5 + m - 1 + 1
+     *      = (4 + m) + 1 = top + 1
+     *
+     * If the tmp1 is a non-inlined opcode and compiling the bytecode
+     * procedure object triggers garbage collection, this
+     * unintialised slot is included into the marking phase and it
+     * might contain a dead reference to an object that was swept
+     * before and added to free list.
+     *
+     * Since the tag value is used for the free list length, an
+     * attempt to mark this object can, in certain cases, cause a
+     * segmentation fault.
+     *
+     * This can be fixed locally here, or only for the potential GC
+     * place. Since the same issue is present in SEXP_OP_APPLY1
+     * both are fixed at the same location
+     */
     fp = sexp_unbox_fixnum(tmp2);
     goto make_call;
   case SEXP_OP_CALL:
@@ -1300,7 +1592,9 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
     sexp_context_top(ctx) = top;
     if (sexp_opcodep(tmp1)) {
       /* compile non-inlined opcode applications on the fly */
+      debug_show_message("** VM just before crash place **");
       tmp1 = make_opcode_procedure(ctx, tmp1, i, SEXP_PROC_NONE);
+      debug_show_message("** VM just after  crash place **");
       if (sexp_exceptionp(tmp1)) {
         _ARG1 = tmp1;
         goto call_error_handler;
@@ -1751,7 +2045,9 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
     break;
   case SEXP_OP_CONS:
     sexp_context_top(ctx) = top;
+    debug_target_creation_1(top, stack);
     _ARG2 = sexp_cons(ctx, _ARG1, _ARG2);
+    debug_target_creation_2(top, stack);
     top--;
     break;
   case SEXP_OP_ADD:
