@@ -1297,15 +1297,19 @@ sexp sexp_apply (sexp ctx, sexp proc, sexp args) {
     i = sexp_unbox_fixnum(_WORD0);
     tmp1 = _ARG1;
   make_call:
-    sexp_context_top(ctx) = top;
     if (sexp_opcodep(tmp1)) {
+      /* don't expose the potentially uninitialise stack top */
+      sexp_context_top(ctx) = top - 1;
       /* compile non-inlined opcode applications on the fly */
       tmp1 = make_opcode_procedure(ctx, tmp1, i, SEXP_PROC_NONE);
       if (sexp_exceptionp(tmp1)) {
+        /* resync the stack top in context */
+        sexp_context_top(ctx) = top;
         _ARG1 = tmp1;
         goto call_error_handler;
       }
     }
+    sexp_context_top(ctx) = top;
     if (! sexp_procedurep(tmp1))
       sexp_raise("non procedure application", sexp_list1(ctx, tmp1));
     j = i - sexp_procedure_num_args(tmp1);
